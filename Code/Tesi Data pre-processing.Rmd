@@ -1,0 +1,1741 @@
+---
+title: "Data pre-processing"
+author: "Matteo Vergani"
+date: "`r Sys.Date()`"
+output: pdf_document
+---
+
+# LIBRARIES AND DIRECTORY
+
+The libraries required for analysis and the creation of the datasets needed for analysis are downloaded.
+
+\
+```{r message=FALSE, warning=FALSE}
+# install.packages("stringr")   # If you haven't installed the package yet
+library(dplyr) 
+library(stringr)
+library(readr)
+library(labelled)   # labeling data
+library(rstatix)    # summary statistics
+library(ggpubr)     # convenient summary statistics and plots
+library(GGally)     # advanced plot
+library(car)        # useful for anova/wald test
+library(Epi)        # easy getting CI for model coef/pred
+library(lme4)       # linear mixed-effects models
+library(lmerTest)   # test for linear mixed-effects models
+library(emmeans)    # marginal means
+library(multcomp)   # CI for linear combinations of model coef
+library(geepack)    # generalized estimating equations
+library(ggeffects)  # marginal effects, adjusted predictions
+library(gt)         # nice tables
+library(msm)
+
+library(tidyverse)  # for everything (data manipulation, visualization, coding, and more)
+theme_set(theme_minimal() + theme(legend.position = "bottom")) # theme for ggplot
+```
+\
+
+The directory is created, pointing to the address where the files containing the datasets are saved.
+
+\
+```{r}
+directory <- "C:\\Users\\hp\\Documents\\UNIMIB\\Tesi\\Datasets\\"
+setwd(directory)
+```
+\
+
+# DAILY MORTALITY
+
+Regarding the meaning of the variables, please read the PDF entitled "Descrizione e tracciato record dati comunali giornalieri".
+
+
+Proceed to download the `comuni_giornaliero_30giugno23.csv`. The columns for the year 2023 are excluded because they are not yet final and being updated.
+
+\
+```{r}
+morti_comuni <- read.csv("comuni_giornaliero_30giugno23.csv", encoding = "latin1")
+morti_comuni$COD_PROVCOM <- str_pad(morti_comuni$COD_PROVCOM, width = 6, pad = "0")
+morti_comuni <- morti_comuni[, !names(morti_comuni) %in% c("M_23", "F_23", "T_23")]
+head(morti_comuni)
+```
+\
+
+Check that the number of municipalities in the dataset is 7901 (number of Italian municipalities currently existing).
+
+\
+```{r}
+length(unique(morti_comuni[,"COD_PROVCOM"]))
+```
+\
+
+## CL_ETA variable
+
+The levels of the variable `CL_ETA` are changed, aggregating the five year classes `85-89`, `90-94`, `95-99` and `100+` creating a single level `85+`. The original levels 18, 19, 20 and 21 are aggregated into the new level 18 now corresponding to class `85+`.
+
+\
+```{r}
+morti_85 <- morti_comuni[morti_comuni$CL_ETA %in% c(18,19,20,21),]
+morti_85_agg <- morti_85 %>%
+  group_by(REG,PROV,NOME_REGIONE,NOME_PROVINCIA,NOME_COMUNE,COD_PROVCOM,TIPO_COMUNE,GE) %>%
+  summarise(M_11 = sum(M_11), M_12 = sum(M_12), M_13 = sum(M_13), 
+            M_14 = sum(M_14), M_15 = sum(M_15), M_16 = sum(M_16), 
+            M_17 = sum(M_17), M_18 = sum(M_18), M_19 = sum(M_19), 
+            M_20 = sum(M_20), M_21 = sum(M_21), M_22 = sum(M_22), 
+            F_11 = sum(F_11), F_12 = sum(F_12), F_13 = sum(F_13), 
+            F_14 = sum(F_14), F_15 = sum(F_15), F_16 = sum(F_16), 
+            F_17 = sum(F_17), F_18 = sum(F_18), F_19 = sum(F_19), 
+            F_20 = sum(F_20), F_21 = sum(F_21), F_22 = sum(F_22), 
+            T_11 = sum(T_11), T_12 = sum(T_12), T_13 = sum(T_13), 
+            T_14 = sum(T_14), T_15 = sum(T_15), T_16 = sum(T_16), 
+            T_17 = sum(T_17), T_18 = sum(T_18), T_19 = sum(T_19), 
+            T_20 = sum(T_20), T_21 = sum(T_21), T_22 = sum(T_22),
+            .groups = "drop")
+morti_85_agg$CL_ETA <- 18 # corrisponde al livello "85+ anni"
+morti_comuni_0_84 <- morti_comuni[!morti_comuni$CL_ETA %in% c(18,19,20,21),]
+morti_comuni <- rbind(morti_comuni_0_84,morti_85_agg)
+```
+\
+
+Similar operations are performed to aggregate age class 0 ("0 years") into age class 1 ("years 1-4") in order to create age class 1 ("0-4 years").
+
+\
+```{r}
+morti_0_4 <- morti_comuni[morti_comuni$CL_ETA %in% c(0,1),]
+morti_0_4_agg <- morti_0_4 %>%
+  group_by(REG,PROV,NOME_REGIONE,NOME_PROVINCIA,NOME_COMUNE,COD_PROVCOM,TIPO_COMUNE,GE) %>%
+  summarise(M_11 = sum(M_11), M_12 = sum(M_12), M_13 = sum(M_13), 
+            M_14 = sum(M_14), M_15 = sum(M_15), M_16 = sum(M_16), 
+            M_17 = sum(M_17), M_18 = sum(M_18), M_19 = sum(M_19), 
+            M_20 = sum(M_20), M_21 = sum(M_21), M_22 = sum(M_22), 
+            F_11 = sum(F_11), F_12 = sum(F_12), F_13 = sum(F_13), 
+            F_14 = sum(F_14), F_15 = sum(F_15), F_16 = sum(F_16), 
+            F_17 = sum(F_17), F_18 = sum(F_18), F_19 = sum(F_19), 
+            F_20 = sum(F_20), F_21 = sum(F_21), F_22 = sum(F_22), 
+            T_11 = sum(T_11), T_12 = sum(T_12), T_13 = sum(T_13), 
+            T_14 = sum(T_14), T_15 = sum(T_15), T_16 = sum(T_16), 
+            T_17 = sum(T_17), T_18 = sum(T_18), T_19 = sum(T_19), 
+            T_20 = sum(T_20), T_21 = sum(T_21), T_22 = sum(T_22),
+            .groups = "drop")
+morti_0_4_agg$CL_ETA <- 1 # corrisponde al livello "0-4 anni"
+morti_comuni_4 <- morti_comuni[!morti_comuni$CL_ETA %in% c(0,1),]
+morti_comuni <- rbind(morti_comuni_4,morti_0_4_agg)
+```
+\
+
+## Mortality dataset creation
+
+Using the `pivot_longer` function in the `tidyr` package we transform the data from the **wide** format to the **long** format.
+
+First we consider the male gender data, creating the `SESSO` column by assigning value 1 to the male gender and then value 2 to the female gender.
+
+\
+```{r}
+morti_M <- morti_comuni[,1:21] # seleziono le colonne relative ai decessi per il genere maschile
+morti_M$SESSO <- 1 # 1 <- Maschi
+
+morti_M <- pivot_longer(morti_M, cols = starts_with("M_"), 
+                        names_to = "Time", values_to = "Decessi") %>% 
+  mutate(Time = parse_number(Time),
+         Time = fct_inorder(paste("20", Time)))
+
+# Remove the space between "20" and year value
+morti_M$Time <- gsub(" ", "", morti_M$Time)
+
+# Convert back to numeric
+morti_M$Time <- as.numeric(morti_M$Time)
+
+morti_M <- morti_M[,c("COD_PROVCOM","NOME_COMUNE","CL_ETA","GE","SESSO","Time","Decessi")]
+```
+\
+
+The observations are aggregated to obtain for each combination of municipality, sex, age group and year the total number of deaths occurring in each year considered (sum of deaths occurring in the observed groups of deaths for a specific year).
+
+\
+```{r}
+aggregated_morti_M <- aggregate(Decessi ~ COD_PROVCOM + NOME_COMUNE + CL_ETA + SESSO + Time, 
+                                data = morti_M, sum)
+head(aggregated_morti_M)
+```
+\
+
+Now let us consider the data for the female gender and perform the same operation as above for the male gender.
+
+\
+```{r}
+morti_F <- morti_comuni[,c(1:9,22:33)] # seleziono le colonne relative ai decessi per il genere femminile
+morti_F$SESSO <- 2 # 2 <- Femmine
+
+morti_F <- pivot_longer(morti_F, cols = starts_with("F_"), 
+                        names_to = "Time", values_to = "Decessi") %>% 
+  mutate(Time = parse_number(Time),
+         Time = fct_inorder(paste("20", Time)))
+
+# Remove the space between "20" and year value
+morti_F$Time <- gsub(" ", "", morti_F$Time)
+
+# Convert back to numeric
+morti_F$Time <- as.numeric(morti_F$Time)
+
+morti_F <- morti_F[,c("COD_PROVCOM","NOME_COMUNE","CL_ETA","GE","SESSO","Time","Decessi")]
+```
+\
+
+We aggregate the observations so as to obtain for each combination of municipality, sex, age group and year the total number of deaths that occurred in each year under consideration (we add up the deaths that occurred in the observed groups of deaths for a specific year).
+
+\
+```{r}
+aggregated_morti_F <- aggregate(Decessi ~ COD_PROVCOM + NOME_COMUNE + CL_ETA + SESSO + Time, 
+                                data = morti_F, sum)
+head(aggregated_morti_F)
+```
+\
+
+At this point, we merge the two previous datasets (`aggregated_morti_F` e `aggregated_morti_M`) into one and save the dataset in `Rdata` format.
+
+\
+```{r}
+morti_giorn_comuni <- rbind(aggregated_morti_M,aggregated_morti_F)
+colnames(morti_giorn_comuni)[colnames(morti_giorn_comuni) == "COD_PROVCOM"] <- "ITTER107"
+colnames(morti_giorn_comuni)[colnames(morti_giorn_comuni) == "NOME_COMUNE"] <- "Territorio"
+colnames(morti_giorn_comuni)[colnames(morti_giorn_comuni) == "Time"] <- "TIME"
+morti_giorn_comuni <- morti_giorn_comuni[,c("ITTER107","Territorio","CL_ETA","SESSO","TIME","Decessi")]
+save(morti_giorn_comuni, file = "morti_giorn_comuni.Rdata")
+write.csv(morti_giorn_comuni, "morti_giorn_comuni.csv")
+```
+\
+
+# CONTRIBUENTS AND TOTAL INCOME BY AMOUNT CLASSES
+
+I download datasets on the number of taxpayers and total income by amount classes for the period from 2012 to 2021.
+
+\
+```{r}
+reddito2012 <- read.csv("Redditi_e_principali_variabili_IRPEF_su_base_comunale_CSV_2012.csv",sep=";", 
+                        check.names = FALSE, encoding = "latin1")
+reddito2013 <- read.csv("Redditi_e_principali_variabili_IRPEF_su_base_comunale_CSV_2013.csv",sep=";", 
+                        check.names = FALSE, encoding = "latin1")
+reddito2013 <- reddito2013[,-49]
+reddito2014 <- read.csv("Redditi_e_principali_variabili_IRPEF_su_base_comunale_CSV_2014.csv",sep=";", 
+                        check.names = FALSE, encoding = "latin1")
+reddito2014 <- reddito2014[,-49]
+reddito2015 <- read.csv("Redditi_e_principali_variabili_IRPEF_su_base_comunale_CSV_2015.csv",sep=";",
+                        check.names = FALSE, encoding = "latin1")
+reddito2015 <- reddito2015[,-51]
+reddito2016 <- read.csv("Redditi_e_principali_variabili_IRPEF_su_base_comunale_CSV_2016.csv",sep=";",
+                        check.names = FALSE, encoding = "latin1")
+reddito2016 <- reddito2016[,-51]
+reddito2017 <- read.csv("Redditi_e_principali_variabili_IRPEF_su_base_comunale_CSV_2017.csv",sep=";",
+                        check.names = FALSE, encoding = "latin1")
+reddito2017 <- reddito2017[,-51]
+reddito2018 <- read.csv("Redditi_e_principali_variabili_IRPEF_su_base_comunale_CSV_2018.csv",sep=";", 
+                        check.names = FALSE, encoding = "latin1")
+reddito2018 <- reddito2018[,-51]
+
+reddito2019 <- read.csv("Redditi_e_principali_variabili_IRPEF_su_base_comunale_CSV_2019.csv",
+                        sep=";", header=F, encoding = "latin1")
+reddito_names <- as.character(reddito2019[1,-(51:52)])
+reddito2019 <- reddito2019[-1,-(51:52)]
+colnames(reddito2019) <- reddito_names
+rownames(reddito2019) <- NULL
+
+reddito2020 <- read.csv("Redditi_e_principali_variabili_IRPEF_su_base_comunale_CSV_2020.csv",
+                        sep=";", header=F, encoding = "latin1")
+reddito2020 <- reddito2020[-1,-(51:52)]
+colnames(reddito2020) <- reddito_names
+rownames(reddito2020) <- NULL
+
+reddito2021 <- read.csv("Redditi_e_principali_variabili_IRPEF_su_base_comunale_CSV_2021.csv",
+                        sep=";", header=F, encoding = "latin1")
+reddito2021 <- reddito2021[-1,-(51:52)]
+colnames(reddito2021) <- reddito_names
+rownames(reddito2021) <- NULL
+```
+\
+
+I create a single dataset covering the period 2012-2021 in which only the variables of interest are present, and additionally sort the observations by `Anno di imposta` and `Codice ISTAT Comune`. For tax year 2022, we use data from tax year 2021.
+
+\
+```{r}
+reddito2012 <- reddito2012[,-c(2,5:7,9:22,25:32)]
+reddito2013 <- reddito2013[,-c(2,5:7,9:22,25:32)]
+reddito2014 <- reddito2014[,-c(2,5:7,9:22,25:32)]
+reddito2015 <- reddito2015[,-c(2,5:7,9:22,25:34)]
+reddito2016 <- reddito2016[,-c(2,5:7,9:22,25:34)]
+reddito2017 <- reddito2017[,-c(2,5:7,9:22,25:34)]
+reddito2018 <- reddito2018[,-c(2,5:7,9:22,25:34)]
+reddito2019 <- reddito2019[,-c(2,5:7,9:22,25:34)]
+reddito2020 <- reddito2020[,-c(2,5:7,9:22,25:34)]
+reddito2021 <- reddito2021[,-c(2,5:7,9:22,25:34)]
+
+colnames(reddito2018) <- colnames(reddito2017) <- colnames(reddito2016) <- colnames(reddito2015) <- colnames(reddito2014) <- colnames(reddito2013) <- colnames(reddito2012) <- colnames(reddito2021)
+
+#per i dati del 2011 copio quelli del 2012
+reddito2011 <- reddito2012
+reddito2011$`Anno di imposta` <- 2011
+
+#per i dati del 2022 copio quelli del 2021
+reddito2022 <- reddito2021
+reddito2022$`Anno di imposta` <- 2022
+
+reddito <- rbind(reddito2011,reddito2012,reddito2013,reddito2014,
+                 reddito2015,reddito2016,reddito2017,reddito2018,
+                 reddito2019,reddito2020,reddito2021,reddito2022)
+
+reddito <- reddito %>% mutate_at(vars(-2, -3), as.numeric)
+
+# Assuming 'result' is the dataset obtained after the previous steps
+# Checking and transforming 'Codice Istat Comune' values to have a length of 6
+reddito$`Codice Istat Comune` <- str_pad(reddito$`Codice Istat Comune`, width = 6, pad = "0")
+reddito <- reddito[order(reddito$`Codice Istat Comune`,reddito$`Anno di imposta`), ]
+```
+\
+
+Since a number of amalgamations, dismemberments and/or changes of name of Italian municipalities have taken place over the years, changes must be made to the data at our disposal in order to have an up-to-date structure for the current situation.
+
+In fact, before making any adjustments to take into account the administrative changes that have taken place in the period of interest, the number of Italian municipalities considered is:
+
+\
+```{r}
+length(unique(reddito$`Codice Istat Comune`))
+```
+\
+
+## Function for mergers
+
+I create the function to perform the merging of certain municipalities into the desired municipality.
+
+\
+```{r}
+aggregate_reddito <- function(dataset,italian_towns,codice_istat_comune,nome_comune) {
+ # italian_towns: is the vector containing the Istat codes of the municipalities involved in the amalgamation
+  # municipality_istat_code: is the Istat code of the new municipality formed as a result of the amalgamation 
+  # municipality_name: is the name of the new municipality formed as a result of the amalgamation
+  
+  # Function inputs must be of type string
+  
+  #NB: The function is specific to perform merging for the information contained in the income dataset
+  
+  result <- dataset %>%
+    filter(`Codice Istat Comune` %in% italian_towns) %>%
+    group_by(`Anno di imposta`) %>%
+    summarize(
+      `Numero contribuenti` = sum(`Numero contribuenti`, na.rm = TRUE),
+      `Reddito imponibile - Frequenza` = sum(`Reddito imponibile - Frequenza`, na.rm = TRUE),
+      `Reddito imponibile - Ammontare in euro` = sum(`Reddito imponibile - Ammontare in euro`, na.rm = TRUE),
+      `Reddito complessivo minore o uguale a zero euro - Frequenza` = sum(`Reddito complessivo minore o uguale a zero euro - Frequenza`, na.rm = TRUE),
+      `Reddito complessivo minore o uguale a zero euro - Ammontare in euro` = sum(`Reddito complessivo minore o uguale a zero euro - Ammontare in euro`, na.rm = TRUE),
+      `Reddito complessivo da 0 a 10000 euro - Frequenza` = sum(`Reddito complessivo da 0 a 10000 euro - Frequenza`, na.rm = TRUE),
+      `Reddito complessivo da 0 a 10000 euro - Ammontare in euro` = sum(`Reddito complessivo da 0 a 10000 euro - Ammontare in euro`, na.rm = TRUE),
+      `Reddito complessivo da 10000 a 15000 euro - Frequenza` = sum(`Reddito complessivo da 10000 a 15000 euro - Frequenza`, na.rm = TRUE),
+      `Reddito complessivo da 10000 a 15000 euro - Ammontare in euro` = sum(`Reddito complessivo da 10000 a 15000 euro - Ammontare in euro`, na.rm = TRUE),
+      `Reddito complessivo da 15000 a 26000 euro - Frequenza` = sum(`Reddito complessivo da 15000 a 26000 euro - Frequenza`, na.rm = TRUE),
+      `Reddito complessivo da 15000 a 26000 euro - Ammontare in euro` = sum(`Reddito complessivo da 15000 a 26000 euro - Ammontare in euro`, na.rm = TRUE),
+      `Reddito complessivo da 26000 a 55000 euro - Frequenza` = sum(`Reddito complessivo da 26000 a 55000 euro - Frequenza`, na.rm = TRUE),
+      `Reddito complessivo da 26000 a 55000 euro - Ammontare in euro` = sum(`Reddito complessivo da 26000 a 55000 euro - Ammontare in euro`, na.rm = TRUE),
+      `Reddito complessivo da 55000 a 75000 euro - Frequenza` = sum(`Reddito complessivo da 55000 a 75000 euro - Frequenza`, na.rm = TRUE),
+      `Reddito complessivo da 55000 a 75000 euro - Ammontare in euro` = sum(`Reddito complessivo da 55000 a 75000 euro - Ammontare in euro`, na.rm = TRUE),
+      `Reddito complessivo da 75000 a 120000 euro - Frequenza` = sum(`Reddito complessivo da 75000 a 120000 euro - Frequenza`, na.rm = TRUE),
+      `Reddito complessivo da 75000 a 120000 euro - Ammontare in euro` = sum(`Reddito complessivo da 75000 a 120000 euro - Ammontare in euro`, na.rm = TRUE),
+      `Reddito complessivo oltre 120000 euro - Frequenza` = sum(`Reddito complessivo oltre 120000 euro - Frequenza`, na.rm = TRUE),
+      `Reddito complessivo oltre 120000 euro - Ammontare in euro` = sum(`Reddito complessivo oltre 120000 euro - Ammontare in euro`, na.rm = TRUE)
+    )
+  
+  # Assuming 'result' is the dataset obtained after the previous steps
+  result <- result %>%
+    mutate(
+      `Codice Istat Comune` = codice_istat_comune,
+      `Denominazione Comune` = toupper(nome_comune),
+    ) 
+  new_reddito <- dataset[!dataset$`Codice Istat Comune` %in% italian_towns,]
+  new_reddito <- rbind(new_reddito, result)
+  return(new_reddito)
+}
+```
+\
+
+## Dataset about administrative changes 
+
+I make the various administrative changes following the history in the file `Demografia_variazioni_codici_denominazioni_dal_09102011.csv` downloaded from the ISTAT website [https://www.istat.it/it/archivio/6789](https://www.istat.it/it/archivio/6789).
+
+I import the data in the file and create separate datasets discriminating on the basis of the variation code:
+* `CD`: Cambio denominazione (Name change);
+* `AP`: Cambio di appartenenza (Change of membership);
+* `ES`: Soppressione Comune (Municipality deletion);
+
+\
+```{r}
+demografia <- read.csv("Demografia_variazioni_codici_denominazioni_dal_09102011.csv", sep=";", header = F, encoding = "latin1")
+demografia <- demografia[-c(1,2),]
+col_dem <- demografia[1,]
+demografia <- demografia[-1,]
+colnames(demografia) <- col_dem
+#dem <- demografia[demografia$`Codice della variazione`!="CS" & demografia$Flag_valido==0,] 
+
+cd <- demografia[demografia$`Codice della variazione`=="CD",]
+ap <- demografia[demografia$`Codice della variazione`=="AP",]
+es <- demografia[demografia$`Codice della variazione`=="ES",]
+```
+\
+
+The various changes that have taken place over the years to the Italian municipalities concerned are now being carried out.
+
+### Name change
+
+The number of municipal denominations is: 
+
+\
+```{r}
+length(unique(reddito$`Denominazione Comune`))
+```
+\
+
+While the number of Istat codes is:
+
+\
+```{r}
+length(unique(reddito$`Codice Istat Comune`))
+```
+\
+
+The municipal names of the municipalities concerned are changed.
+
+\
+```{r}
+for(codice in cd$`Codice Comune (alfanumerico)`){
+  reddito[reddito$`Codice Istat Comune`==codice,"Denominazione Comune"] <- 
+    cd[cd$`Codice Comune (alfanumerico)`==codice,"Denominazione Comune associato alla variazione"]
+}
+```
+\
+
+As a result of this operation, the number of municipal denominations is equal to: 
+
+\
+```{r}
+length(unique(reddito$`Denominazione Comune`))
+```
+\
+
+While the number of Istat codes is:
+
+\
+```{r}
+length(unique(reddito$`Codice Istat Comune`))
+```
+\
+
+### Change of Membership (Change Municipal ISTAT Code)
+
+At this point, we proceed with the change of affiliation of the municipalities of interest, resulting in a change of the corresponding Istat Code.
+
+\
+```{r}
+for(codice in ap$`Codice Comune (alfanumerico)`){
+  reddito[reddito$`Codice Istat Comune`==codice,"Codice Istat Comune"] <- 
+    ap[ap$`Codice Comune (alfanumerico)`==codice,"Codice del Comune associato alla variazione"]
+}
+```
+\
+
+As a result of this operation, the number of municipal denominations is equal to:
+
+\
+```{r}
+length(unique(reddito$`Denominazione Comune`))
+```
+\
+
+While the number of Istat codes is:
+
+\
+```{r}
+length(unique(reddito$`Codice Istat Comune`))
+```
+\
+
+### Municipality suppression
+
+Finally, the municipalities are merged to form new municipalities, using the `aggregate_reddito` function.
+
+\
+```{r}
+for(codice in unique(es$`Codice del Comune associato alla variazione`)){
+  codici <- c(es[es$`Codice del Comune associato alla variazione`==codice,"Codice Comune (alfanumerico)"],codice)
+  reddito <- aggregate_reddito(reddito,
+                             italian_towns = codici,
+                             codice_istat_comune = codice,
+                             nome_comune = unique(es[es$`Codice del Comune associato alla variazione` == codice,
+                                                                   "Denominazione Comune associato alla variazione"]))
+}
+```
+\
+
+As a result of this operation, the number of municipal denominations is equal to: 
+
+\
+```{r}
+length(unique(reddito$`Denominazione Comune`))
+```
+\
+
+While the number of Istat codes is:
+
+\
+```{r}
+length(unique(reddito$`Codice Istat Comune`))
+```
+\
+
+The number of ISTAT codes is 7902 because some observations have ISTAT codes of '000000' and territorial designations of '0' and these observations are discarded. Instead, the number of municipal designations is higher than expected. Therefore, the number of denominations corresponding to the ISTAT codes of the municipalities considered is checked.
+
+\
+```{r}
+num <- 0
+for(codice in unique(reddito$`Codice Istat Comune`)){
+  if(length(unique(reddito[reddito$`Codice Istat Comune`==codice,"Denominazione Comune"]))!=1){
+    #print(codice)
+    num <- num+1
+  }
+}
+print(num)
+```
+\
+
+A larger number than expected is present because some Istat codes have changed the name of the corresponding municipality over the years, thus having two different names associated with some municipal Istat codes.
+
+
+At this point, it is ensured that each municipality's istat code has only one name associated with it, particularly the most recent one.
+
+\
+```{r}
+for(codice in unique(reddito$`Codice Istat Comune`)){
+  if(length(unique(reddito[reddito$`Codice Istat Comune`==codice,"Denominazione Comune"]))>1)
+    reddito[reddito$`Codice Istat Comune`==codice,"Denominazione Comune"] <- 
+      reddito[reddito$`Codice Istat Comune`==codice & reddito$`Anno di imposta`=="2022","Denominazione Comune"]
+}
+```
+\
+
+Thus, the number of names of the municipalities considered is equal to: 
+
+\
+```{r}
+length(unique(reddito$`Denominazione Comune`))
+```
+\
+
+while the istat codes of the municipalities considered are:
+
+\
+```{r}
+length(unique(reddito$`Codice Istat Comune`))
+```
+\
+
+Observations with municipal ISTAT code '000000' are now discarded.
+
+\
+```{r}
+reddito <- reddito[reddito$`Codice Istat Comune`!="000000",]
+```
+\
+
+Thus, the number of names of the municipalities considered is equal to: 
+
+\
+```{r}
+length(unique(reddito$`Denominazione Comune`))
+```
+\
+
+while the istat codes of the municipalities considered are:
+
+\
+```{r}
+length(unique(reddito$`Codice Istat Comune`))
+```
+\
+
+## Classification of municipalities on the basis of deciles of average taxable income 
+
+\
+```{r}
+# Assuming your dataframe is named 'reddito'
+# You can replace 'reddito' with your actual dataframe name
+
+# Create an empty dataframe to store results
+decile_breaks_df <- data.frame()
+
+# Create a vector of years
+years <- unique(reddito$`Anno di imposta`)
+
+# Function to calculate and store deciles for each year
+calculate_and_store_deciles <- function(year) {
+  # Subset the dataframe for the specific year
+  subset_data <- reddito[reddito$`Anno di imposta` == year, "Reddito imponibile medio"]
+
+  # Calculate deciles using quantile
+  deciles <- quantile(subset_data, probs = seq(0, 1, by = 0.1),na.rm=T)
+
+  # Create a data frame with year and deciles
+  result_df <- data.frame(Year = year, `0%` = deciles[1], `10%` = deciles[2], `20%` = deciles[3],
+                          `30%` = deciles[4], `40%` = deciles[5], `50%` = deciles[6],
+                          `60%` = deciles[7], `70%` = deciles[8], `80%` = deciles[9],
+                          `90%` = deciles[10])
+
+  # Append the result to the main dataframe
+  decile_breaks_df <<- rbind(decile_breaks_df, result_df)
+}
+
+# Apply the function for each year
+for (year in years) {
+  calculate_and_store_deciles(year)
+}
+colnames(decile_breaks_df) <- c("Year","0%","10%","20%","30%","40%",
+                                  "50%","60%","70%","80%","90%")
+
+# Print the resulting dataframe
+print(decile_breaks_df)
+```
+\
+
+Once the dataset has been prepared with the correct number of municipalities, we proceed to create the indicator **Reddito imponibile medio**, calculated for each combination of municipality and tax year as the ratio of the total taxable income of the taxpayers residing in the municipality to the number of taxpayers residing in the municipality. Based on the deciles of this variable, an indicator is defined that takes values from 1 to 10, thus defining the level of the group to which the municipality belongs in that tax year. For each tax year, the deciles and thus the classification into the 10 levels are calculated.
+
+
+\
+```{r}
+reddito$`Reddito imponibile medio` <- reddito$`Reddito imponibile - Ammontare in euro`/reddito$`Numero contribuenti`
+
+reddito <- reddito %>%
+  group_by(`Anno di imposta`) %>%
+  mutate(INCOME = cut(`Reddito imponibile medio`, 
+                      breaks = quantile(`Reddito imponibile medio`,
+                                        probs = seq(0, 1, 0.1),na.rm=TRUE), 
+                      labels = 1:10, 
+                      include.lowest = TRUE))
+```
+\
+
+Modify the `reddito` dataset with only the information of interest
+
+\
+```{r}
+colnames(reddito)[colnames(reddito) == "Anno di imposta"] <- "TIME"
+colnames(reddito)[colnames(reddito) == "Codice Istat Comune"] <- "ITTER107"
+colnames(reddito)[colnames(reddito) == "Denominazione Comune"] <- "Territorio"
+reddito <- reddito[,c("ITTER107","Territorio","TIME","Numero contribuenti","Reddito imponibile - Ammontare in euro",
+                      "Reddito imponibile medio","INCOME")]
+```
+\
+
+NB: There is a problem with the municipal names contained in the Territory column of the `reddito` dataset, which has a different use of accents than the names in the other datasets for mortality, education and resident population, and also only capitalised characters are used.
+
+
+For this reason, in order to standardise the municipal names in all the datasets, a **merge** will be made between the `reddito` dataset (without considering the `Territorio` column) and the `mort_giorn_comuni` dataset when implementing the models, so that the observations in the `reddito` dataset do not differ from the other datasets, as far as the values in the `Territorio` column are concerned.
+
+## Income rank creation
+
+Once such an indicator has been created, we approximate the **rank** of each observation in the $k-$th level of the categorical variable `INCOME` (where $k=1,\dots,K=10$) using the rank corresponding to the $k-$th level of `INCOME`, defined as the complement to 1 of the sum of the percentage of observations with an `INCOME` level above $k$ and half the percentage of observations in the $k$ group of `INCOME`. 
+
+\
+```{r}
+reddito$INCOME_RANK <- 0
+for(anno in unique(reddito$TIME)){
+  for(k in sort(unique(as.numeric(reddito$INCOME)))){
+    reddito$INCOME_RANK[reddito$TIME==anno & as.numeric(reddito$INCOME)==k] <- nrow(reddito[reddito$TIME==anno & as.numeric(reddito$INCOME)>k,])/nrow(reddito[reddito$TIME==anno,]) + (nrow(reddito[reddito$TIME==anno & as.numeric(reddito$INCOME)==k,])/nrow(reddito[reddito$TIME==anno,]))/2
+  }
+}
+```
+\
+
+Ora si crea il dataset con le sole informazioni d'interesse e si salvano i dati in un dataset in formato `Rdata` e formato CSV.
+
+\
+```{r}
+save(reddito, file = "reddito.Rdata")
+write.csv(reddito, "reddito.csv")
+```
+\
+
+# EDUCATION
+
+## EDUCATION 2018-2022
+
+I download the datasets on educational attainment.
+
+Data on the Italian municipal resident population by sex, age group and educational level are available through the permanent census for the time period 2018 to 2021. For the year 2022, the years 2021 will be used.
+
+(NB: through the 2011 census data, we will treat data from 2011 to 2017).
+
+With regard to gender, the following coding is imposed: 1 stands for "Men", 2 stands for "Women".
+
+\
+```{r}
+istruzione_F_18_19 <- read.csv("istruzione_F_18_19.csv")
+istruzione_F_20_21 <- read.csv("istruzione_F_20_21.csv")
+istruzione_M_18_19 <- read.csv("istruzione_M_18_19.csv")
+istruzione_M_20_21 <- read.csv("istruzione_M_20_21.csv")
+
+istruzione_F_18_19 <- istruzione_F_18_19[,-c(14,15)]
+istruzione_F_20_21 <- istruzione_F_20_21[,-c(14,15)]
+istruzione_M_18_19 <- istruzione_M_18_19[,-c(14,15)]
+istruzione_M_20_21 <- istruzione_M_20_21[,-c(14,15)]
+
+istruzione_F_2022 <- istruzione_F_20_21[istruzione_F_20_21$TIME==2021,]
+istruzione_F_2022$TIME <- 2022
+istruzione_F_2022$Seleziona.periodo <- 2022
+
+istruzione_M_2022 <- istruzione_M_20_21[istruzione_M_20_21$TIME==2021,]
+istruzione_M_2022$TIME <- 2022
+istruzione_M_2022$Seleziona.periodo <- 2022
+
+istruzione_18_22 <- rbind(istruzione_F_18_19,istruzione_F_20_21,istruzione_F_2022,
+                          istruzione_M_18_19,istruzione_M_20_21,istruzione_M_2022)
+
+istruzione_18_22$ITTER107 <- str_pad(istruzione_18_22$ITTER107, width = 6, pad = "0")
+istruzione_18_22 <- istruzione_18_22[order(istruzione_18_22$ITTER107,istruzione_18_22$TIME), ]
+
+istruzione_18_22[istruzione_18_22$SEXISTAT1 == "M","SEXISTAT1"] <- 1 # 1 <- Maschi
+istruzione_18_22[istruzione_18_22$SEXISTAT1 == "FALSE","SEXISTAT1"] <- 2 # 2 <- Femmine
+
+istruzione_18_22 <- istruzione_18_22[, !colnames(istruzione_18_22) %in% c("TIPO_DATO_CENS_POP","Tipo.dato","Seleziona.periodo")]
+```
+\
+
+### Function for mergers
+
+I create the function to perform the merging of certain municipalities into the desired municipality.
+
+\
+```{r}
+aggregate_istruzione <- function(dataset,italian_towns,codice_istat_comune,nome_comune){
+  filtered_dataset <- dataset[dataset$`ITTER107` %in% italian_towns, ]
+  aggregated_dataset <- aggregate(`Value` ~ `SEXISTAT1` + `Sesso` + `ETA1` + `Età` +
+                                    `TITOLO_STUDIO` + `Grado.di.istruzione` + `TIME`, 
+                                  data = filtered_dataset, sum)
+  
+  # Assuming 'result' is the dataset obtained after the previous steps
+  aggregated_dataset <- aggregated_dataset %>%
+    mutate(`ITTER107` = codice_istat_comune,
+           `Territorio` = nome_comune,
+           .before = SEXISTAT1)
+  
+  new_istruzione <- dataset[!dataset$`ITTER107` %in% italian_towns,]
+  new_istruzione <- rbind(new_istruzione, aggregated_dataset)
+  
+  return(new_istruzione)
+}
+```
+\
+
+### Administrative changes
+
+We now proceed to carry out the various changes that have taken place over the years to the Italian municipalities concerned.
+
+#### Change of name
+
+The number of municipal denominations is:
+
+\
+```{r}
+length(unique(istruzione_18_22$Territorio))
+```
+\
+
+While the number of Istat codes is:
+
+\
+```{r}
+length(unique(istruzione_18_22$ITTER107))
+```
+\
+
+The municipal names of the municipalities concerned are changed.
+
+\
+```{r}
+for(codice in cd$`Codice Comune (alfanumerico)`){
+  istruzione_18_22[istruzione_18_22$ITTER107==codice,"Territorio"] <- 
+    cd[cd$`Codice Comune (alfanumerico)`==codice,"Denominazione Comune associato alla variazione"]
+}
+```
+\
+
+As a result of this operation, the number of municipal denominations is equal to: 
+
+\
+```{r}
+length(unique(istruzione_18_22$Territorio))
+```
+\
+
+While the number of Istat codes is:
+
+\
+```{r}
+length(unique(istruzione_18_22$ITTER107))
+```
+\
+
+#### Change of Membership (Change Municipal ISTAT Code)
+
+At this point, the municipalities of interest are changed, resulting in a change of the corresponding Istat Code.
+
+\
+```{r}
+for(codice in ap$`Codice Comune (alfanumerico)`){
+  istruzione_18_22[istruzione_18_22$ITTER107==codice,"ITTER107"] <- 
+    ap[ap$`Codice Comune (alfanumerico)`==codice,"Codice del Comune associato alla variazione"]
+}
+```
+\
+
+As a result of this operation, the number of municipal denominations is equal to:
+
+\
+```{r}
+length(unique(istruzione_18_22$Territorio))
+```
+\
+
+While the number of Istat codes is:
+
+\
+```{r}
+length(unique(istruzione_18_22$ITTER107))
+```
+\
+
+#### Municipality suppression
+
+Finally, the municipalities are merged to form new municipalities, using the `aggregate_istruzione` function.
+
+\
+```{r}
+for(codice in unique(es$`Codice del Comune associato alla variazione`)){
+  codici <- c(es[es$`Codice del Comune associato alla variazione`==codice,"Codice Comune (alfanumerico)"],codice)
+  istruzione_18_22 <- aggregate_istruzione(istruzione_18_22,
+                                italian_towns = codici,
+                                codice_istat_comune = codice,
+                                nome_comune = unique(es[es$`Codice del Comune associato alla variazione` == codice,
+                                                        "Denominazione Comune associato alla variazione"]))
+}
+```
+\
+
+As a result of this operation, the number of municipal denominations is equal to: 
+
+\
+```{r}
+length(unique(istruzione_18_22$Territorio))
+```
+\
+
+While the number of Istat codes is:
+
+\
+```{r}
+length(unique(istruzione_18_22$ITTER107))
+```
+\
+
+The number of Istat Codes corresponds to the current number (7901), while the number of municipal designations is higher than expected.
+
+
+Check the number of denominations corresponding to the Istat Codes of the municipalities considered.
+
+\
+```{r}
+num <- 0
+for(codice in unique(istruzione_18_22$ITTER107)){
+  if(length(unique(istruzione_18_22[istruzione_18_22$ITTER107==codice,"Territorio"]))!=1){
+    num <- num+1
+  }
+}
+print(num)
+```
+\
+
+Each ISTAT code corresponding to the 7901 Italian municipalities corresponds to a single name, as expected.
+
+### Classification of municipalities into groups defined by the deciles of the percentage of residents aged 25+ with a qualification < secondary school
+
+To perform the classification, we do not consider the variables age class and sex (couldn't we take them into account?) and then group the observations according to the variables `ITTER107`, `Territorio` and `TIME`, so that we can obtain the population for each of these combinations. In addition, we repeat the previous operation only with observations that are older than 25 years and have an educational qualification below secondary school. Having constructed these two datasets, it is possible to merge them and construct the `GROUP_ISTRUZIONE` variable defined on the basis of the deciles of the percentage of residents aged 25+ with a qualification < secondary school (the `PERCENTAGE` variable).
+
+\
+```{r}
+# Remove observations related to age group "9 anni e più" or education level "Totale"
+istruzione_18_22_new <- istruzione_18_22[!(istruzione_18_22$ETA1=="Y_GE9" | istruzione_18_22$TITOLO_STUDIO=="ALL"),]
+
+# Calculate the total number of people for each combination of ITTER107, TIME, and SEXISTAT1
+total_people <- istruzione_18_22_new %>%
+  group_by(ITTER107, Territorio, TIME) %>%
+  summarise(total = sum(Value),
+            .groups = "drop")
+
+# Filter the data to include only relevant combinations of ETA1 and TITOLO_STUDIO
+filtered_data <- istruzione_18_22_new %>%
+  filter(ETA1 %in% c("Y25-49","Y50-64","Y_GE65") & 
+           TITOLO_STUDIO %in% c("LSE","PSE","NED","LBNA","IL"))
+
+# Calculate the sum of people for each combination of ITTER107, TIME, SEXISTAT1, ETA1, and TITOLO_STUDIO
+# about the filtered dataset with 25+ years and TITOLO STUDIO levels "LSE", "PSE", "NED", "LBNA", "IL"
+subset_total <- filtered_data %>%
+  group_by(ITTER107, Territorio, TIME) %>%
+  summarise(subset_sum = sum(Value),
+            .groups = "drop")
+
+result <- merge(total_people, subset_total, by = c("ITTER107", "Territorio", "TIME"))
+
+result$PERCENTAGE <- result$subset_sum/result$total
+
+istruzione_2018_2022 <- result[, c("ITTER107", "Territorio", "TIME", "PERCENTAGE")]
+```
+\
+
+Creation of deciles and the variable `EDUC`.
+
+\
+```{r}
+istruzione_2018_2022 <- istruzione_2018_2022 %>%
+  group_by(TIME) %>%
+  mutate(EDUC = cut(PERCENTAGE, 
+                    breaks = quantile(PERCENTAGE, probs = seq(0, 1, 0.1), na.rm = TRUE),
+                    labels = 1:10,
+                    include.lowest = TRUE))
+head(istruzione_2018_2022,10)
+```
+\
+
+### Education rank creation
+
+Once such an indicator has been created, we approximate the **rank** of each observation in the $k-$th level of the categorical variable `EDUC` (where $k=1,\dots,K=10$) using the rank corresponding to the $k-$th level of `EDUC`, defined as the 1's complement of the sum of the percentage of observations with a level of `EDUC` above $k$ and half the percentage of observations in the $k$ group of `EDUC`. 
+
+\
+```{r}
+istruzione_2018_2022$EDUC_RANK <- 0
+for(anno in unique(istruzione_2018_2022$TIME)){
+  for(k in sort(unique(as.numeric(istruzione_2018_2022$EDUC)))){
+    istruzione_2018_2022$EDUC_RANK[istruzione_2018_2022$TIME==anno & as.numeric(istruzione_2018_2022$EDUC)==k] <- nrow(istruzione_2018_2022[istruzione_2018_2022$TIME==anno & as.numeric(istruzione_2018_2022$EDUC)<k,])/nrow(istruzione_2018_2022[istruzione_2018_2022$TIME==anno,]) + (nrow(istruzione_2018_2022[istruzione_2018_2022$TIME==anno & as.numeric(istruzione_2018_2022$EDUC)==k,])/nrow(istruzione_2018_2022[istruzione_2018_2022$TIME==anno,]))/2
+  }
+}
+```
+\
+
+Now we proceed to save the `instruction_2018_2022` dataset in `Rdata` and `CSV` format.
+
+\
+```{r}
+save(istruzione_2018_2022, file = "istruzione_2018_2022.Rdata")
+write.csv(istruzione_2018_2022, "istruzione_2018_2022.csv")
+```
+\
+
+## EDUCATION 2011
+
+Data on the Italian resident population by gender, age group and educational level from the "Censimento della popolazione e delle abitazioni del 2011" are loaded.
+
+\
+```{r}
+istr_11 <- read.csv("Estrazione_10_23_ETA_classi.csv",sep=";")
+```
+\
+
+The number of municipalities in the dataset considered is counted.
+
+\
+```{r}
+unique_combinations <- istr_11 %>%
+  distinct(CODREG, CODPRO, CODCOM)
+
+unique_combinations_count <- nrow(unique_combinations)
+
+print(unique_combinations_count)
+```
+\
+
+In 2011, there were 8092 municipalities, a higher number than the 7901 municipalities in the current situation in Italy. Therefore, as done previously, we want to take into account the administrative changes that have occurred over the years in order to adapt the situation to the current one.
+
+
+To do this, first of all we load the data on the list of administrative codes relating to the situation of the Italian territory in the year 2011 so as to be able to go back to the 6-digit ISTAT code of the municipalities, information that was missing in the initial dataset relating to the degree of education in the resident population in 2011.
+
+\
+```{r}
+library(readxl)
+codici_2011 <- read_excel("Archivio-elenco-comuni-codici-e-denominazioni_Anni_2008-2011\\Codici-statistici-e-denominazioni-al-31_12_2011.xls",sheet = 2)
+head(codici_2011)
+```
+\
+
+In order to be able to carry out the following operations, the codes in the dataset concerning the degree of education in the resident population in 2011 are modified so that the codes for regions, provinces and municipalities become alphanumeric codes.
+
+\
+```{r}
+istr_11$CODREG <- str_pad(istr_11$CODREG, width = 2, pad = "0")
+istr_11$CODPRO <- str_pad(istr_11$CODPRO, width = 3, pad = "0")
+istr_11$CODCOM <- str_pad(istr_11$CODCOM, width = 3, pad = "0")
+```
+\
+
+The column names for the administrative codes in the `codici_2011` dataset are changed, and only the columns of interest are selected from the dataset.
+
+\
+```{r}
+colnames(codici_2011)[colnames(codici_2011) == "Codice Regione"] <- "CODREG"
+colnames(codici_2011)[colnames(codici_2011) == "Codice Provincia"] <- "CODPRO"
+colnames(codici_2011)[colnames(codici_2011) == "Progressivo del comune"] <- "CODCOM"
+colnames(codici_2011)[colnames(codici_2011) == "Codice Istat del Comune \n(alfanumerico)"] <- "ITTER107"
+colnames(codici_2011)[colnames(codici_2011) == "Denominazione (Italiana e straniera)"] <- "Territorio"
+codici_2011 <- codici_2011[,c("CODREG","CODPRO","CODCOM","ITTER107","Territorio")]
+```
+\
+
+Now, since all the necessary information is available, a merge can be performed between the `codici_2011` and `istr_2011` datasets in order to add the information of the alphanumeric municipality's ISTAT code to the `istr_2011` dataset.
+
+\
+```{r}
+istruzione_2011 <- merge(codici_2011,istr_11)
+```
+\
+
+At this point, having the ISTAT code of the alphanumeric municipality available, the information on administrative codes of regions, provinces and municipalities can be discarded.
+
+\
+```{r}
+istruzione_2011 <- istruzione_2011[,c("ITTER107","Territorio","SESSO","ETARIC","TITSTUDIORIC12","FREQ_TOT")]
+head(istruzione_2011)
+```
+\
+
+### Function for mergers
+
+We create the function to perform mergers of certain municipalities in the desired municipality.
+
+\
+```{r}
+aggregate_istruzione_2011 <- function(dataset,italian_towns,codice_istat_comune,nome_comune){
+  filtered_dataset <- dataset[dataset$ITTER107 %in% italian_towns,]
+  aggregated_dataset <- aggregate(FREQ_TOT ~ SESSO + ETARIC + TITSTUDIORIC12, 
+                                  data = filtered_dataset, sum)
+  
+  # Assuming 'result' is the dataset obtained after the previous steps
+  aggregated_dataset <- aggregated_dataset %>%
+    mutate(ITTER107 = codice_istat_comune,
+           Territorio = nome_comune,
+           .before = SESSO)
+  
+  new_istruzione <- dataset[!dataset$ITTER107 %in% italian_towns,]
+  new_istruzione <- rbind(new_istruzione, aggregated_dataset)
+  
+  return(new_istruzione)
+}
+```
+\
+
+### Administrative changes
+
+We now proceed to carry out the various changes that have taken place over the years to the Italian municipalities concerned.
+
+#### Cambio denominazione
+
+The number of municipal denominations is: 
+
+\
+```{r}
+length(unique(istruzione_2011$Territorio))
+```
+\
+
+While the number of Istat codes is:
+
+\
+```{r}
+length(unique(istruzione_2011$ITTER107))
+```
+\
+
+The municipal names of the municipalities concerned are changed.
+
+\
+```{r}
+for(codice in cd$`Codice Comune (alfanumerico)`){
+  istruzione_2011[istruzione_2011$ITTER107==codice,"Territorio"] <- 
+    cd[cd$`Codice Comune (alfanumerico)`==codice,"Denominazione Comune associato alla variazione"]
+}
+```
+\
+
+As a result of this operation, the number of municipal denominations is equal to:
+
+\
+```{r}
+length(unique(istruzione_2011$Territorio))
+```
+\
+
+While the number of Istat codes is:
+
+\
+```{r}
+length(unique(istruzione_2011$ITTER107))
+```
+\
+
+#### Change of Membership (Change Municipal ISTAT Code)
+
+At this point, the municipalities of interest are changed, resulting in a change of the corresponding Istat Code.
+
+\
+```{r}
+for(codice in ap$`Codice Comune (alfanumerico)`){
+  istruzione_2011[istruzione_2011$ITTER107==codice,"ITTER107"] <- 
+    ap[ap$`Codice Comune (alfanumerico)`==codice,"Codice del Comune associato alla variazione"]
+}
+```
+\
+
+As a result of this operation, the number of municipal denominations is equal to: 
+
+\
+```{r}
+length(unique(istruzione_2011$Territorio))
+```
+\
+
+While the number of Istat codes is:
+
+\
+```{r}
+length(unique(istruzione_2011$ITTER107))
+```
+\
+
+#### Soppressione Comune
+
+Finally, the municipalities are merged to form new municipalities, using the `aggregate_istruzione` function.
+
+\
+```{r}
+for(codice in unique(es$`Codice del Comune associato alla variazione`)){
+  codici <- c(es[es$`Codice del Comune associato alla variazione`==codice,"Codice Comune (alfanumerico)"],codice)
+  istruzione_2011 <- aggregate_istruzione_2011(istruzione_2011,
+                                italian_towns = codici,
+                                codice_istat_comune = codice,
+                                nome_comune = unique(es[es$`Codice del Comune associato alla variazione` == codice,
+                                                        "Denominazione Comune associato alla variazione"]))
+}
+```
+\
+
+As a result of this operation, the number of municipal denominations is equal to: 
+
+\
+```{r}
+length(unique(istruzione_2011$Territorio))
+```
+\
+
+While the number of Istat codes is:
+
+\
+```{r}
+length(unique(istruzione_2011$ITTER107))
+```
+\
+
+The number of ISTAT codes opened at 7899, which is lower than the number of municipalities in the current situation in Italy (7901). 
+
+Taking the information on the degree of education in the population residing in Italian municipalities between 2018 and 2022, the municipalities that did not exist in 2011 were:
+
+\
+```{r}
+comuni <- istruzione_2018_2022$ITTER107 %in% istruzione_2011$ITTER107
+result <- unique(istruzione_2018_2022[!comuni, c("ITTER107","Territorio")])
+result
+```
+\
+
+This is due to the fact that the dataset lacks information on the municipalities of Mappano and Misiliscemi, two municipalities that were created as a result of hived-off areas from other municipalities in 2013 and 2021, respectively. Therefore, information on these municipalities in 2011 could not be available.
+
+
+I check the number of names corresponding to the Istat codes of the municipalities considered.
+
+\
+```{r}
+num <- 0
+for(codice in unique(istruzione_2011$ITTER107)){
+  if(length(unique(istruzione_2011[istruzione_2011$ITTER107==codice,"Territorio"]))!=1){
+    num <- num+1
+  }
+}
+print(num)
+```
+\
+
+Only one name corresponds to each ISTAT code, as expected.
+
+### Levels of education
+
+Data on the educational attainment of the resident population in Italian municipalities in the period between the years 2018 and 2022 provided the following classification of educational attainment:
+
+
+* "diploma di tecnico superiore ITS o titolo di studio terziario di primo livello" ("BL");
+* "diploma di istruzione secondaria di II grado o di qualifica professionale (corso di 3-4 anni) compresi IFTS" ("USE_IF");
+* "licenza di scuola media inferiore o di avviamento professionale" ("LSE");
+* "licenza di scuola elementare" ("PSE");
+* "nessun titolo di studio" ("NED");
+* "titolo di studio terziario di secondo livello e dottorato di ricerca" ("ML_RDD");
+* "dottorato di ricerca/diploma accademico di formazione alla ricerca" ("RDD");
+* "totale" ("ALL");
+* "alfabeti privi di titolo di studio" ("LBNA");
+* "analfabeti" ("IL");
+* "titolo di studio terziario di secondo livello" ("ML").
+
+
+In contrast, in the data from the "Censimento della popolazione e delle abitazioni del 2011", the classification of educational attainment included the following categories:
+
+
+* 1 - "Analfabeti";
+* 2 - "Alfabeti privi di titolo di studio";
+* 3 - "Licenza di scuola elementare";
+* 4 - "Licenza di scuola media inferiore o di avviamento professionale";
+* 5 - "Diploma di scuola secondaria superiore (2-3 anni)";
+* 6 - "Diploma di scuola secondaria superiore (4-5 anni)";
+* 7 - "Diploma di accademia di belle arti etc. Conservatorio vecchio ordinamento";
+* 8 - "Diploma universitario (2-3 anni) del vecchio ordinamento (incluse le scuole dirette e a fini speciali o parauniversitarie)";
+* 9 - "Diploma accademico A.F.A.M. I Liv";
+* 10 - "Laurea triennale";
+* 11 - "Diploma accademico A.F.A.M. II Liv";
+* 12 - "Laurea (4-6 anni) del vecchio ordinamento, laurea specialistica o magistrale a ciclo unico del nuovo ordinamento, laurea biennale specialistica (di II livello) del nuovo ordinamento".
+
+
+Some of the categories used for the variable describing the degree of education in "Censimento della popolazione e delle abitazioni del 2011" are the same as those used for the 2018-2022 period, while others are not present but need to be modified in order to have a similar structure for both periods.
+
+
+For this purpose, it is decided to aggregate categories 7 to 12 together as they contain information that is comparable to the level of 'tertiary degree and PhD'.
+
+\
+```{r}
+titoli_uni <- istruzione_2011[istruzione_2011$TITSTUDIORIC12 %in% c(7,8,9,10,11,12),]
+titoli_uni <- aggregate(FREQ_TOT ~ ITTER107 + Territorio + SESSO + ETARIC,
+                        data = titoli_uni,sum)
+titoli_uni$TITSTUDIORIC12 <- 7
+no_titoli_uni <- istruzione_2011[!istruzione_2011$TITSTUDIORIC12 %in% c(7,8,9,10,11,12),]
+istruzione_2011 <- rbind(no_titoli_uni,titoli_uni)
+```
+\
+
+### Classification of municipalities into groups defined by the deciles of the percentage of residents aged 25+ with a qualification < secondary school
+
+To perform the classification, we do not consider the variables age class and sex and therefore group the observations according to the variables `ITTER107`, `Territorio` and `TIME`, so that we can obtain the population for each of these combinations. In addition, we repeat the previous operation only with observations that are older than 25 years and have an educational qualification below secondary school. Once these two datasets have been constructed, it is possible to merge them and construct the `GROUP_ISTRUZIONE` variable defined on the basis of the deciles of the percentage of residents aged 25+ with a qualification < secondary school (the `PERCENTAGE` variable).
+
+\
+```{r}
+# Calculate the total number of people for each combination of ITTER107 and Territorio
+total_people <- istruzione_2011 %>%
+  group_by(ITTER107, Territorio) %>%
+  summarise(total = sum(FREQ_TOT),
+            .groups = "drop")
+
+# Filter the data to include only relevant combinations of ETARIC and TITSTUDIORIC12
+filtered_data <- istruzione_2011 %>%
+  filter(ETARIC %in% c(2,3,4) & TITSTUDIORIC12 %in% c(1,2,3,4))
+
+# Calculate the sum of people for each combination of ITTER107, Territorio, SESSO, ETARIC and TITSTUDIORIC12 about the filtered dataset with 25+ years and TITSTUDIORIC12 levels < scuola superiore (first 4 levels)
+subset_total <- filtered_data %>%
+  group_by(ITTER107, Territorio) %>%
+  summarise(subset_sum = sum(FREQ_TOT),
+            .groups = "drop")
+
+result <- merge(total_people, subset_total, by = c("ITTER107", "Territorio"))
+
+result$PERCENTAGE <- result$subset_sum/result$total
+result$TIME <- 2011
+istruzione_2011_new <- result[, c("ITTER107", "Territorio", "TIME", "PERCENTAGE")]
+```
+\
+
+Creation of deciles and the variable `EDUC`.
+\
+```{r}
+istruzione_2011 <- istruzione_2011_new %>%
+  mutate(EDUC = cut(PERCENTAGE, 
+                    breaks = quantile(PERCENTAGE, probs = seq(0, 1, 0.1), na.rm = TRUE),
+                    labels = 1:10,
+                    include.lowest = TRUE))
+```
+\
+
+### Education rank creation
+
+Once such an indicator has been created, we approximate the **rank** of each observation in the $k-$th level of the categorical variable `EDUC` (where $k=1,\dots,K=10$) using the rank corresponding to the $k-$th level of `EDUC`, defined as the 1's complement of the sum of the percentage of observations with a level of `EDUC` above $k$ and half the percentage of observations in the $k$ group of `EDUC`. 
+
+\
+```{r}
+istruzione_2011$EDUC_RANK <- 0
+for(k in sort(unique(as.numeric(istruzione_2011$EDUC)))){
+  istruzione_2011$EDUC_RANK[as.numeric(istruzione_2011$EDUC)==k] <- nrow(istruzione_2011[as.numeric(istruzione_2011$EDUC)<k,])/nrow(istruzione_2011) + (nrow(istruzione_2011[as.numeric(istruzione_2011$EDUC)==k,])/nrow(istruzione_2011))/2
+}
+```
+\
+
+Now we proceed to save the `instruction_2011` dataset in `Rdata` and `CSV` format.
+
+\
+```{r}
+save(istruzione_2011, file = "istruzione_2011.Rdata")
+write.csv(istruzione_2011, "istruzione_2011.csv")
+```
+\
+
+## EDUCATION 2011-2022
+
+Once the dataset has been created with data on the municipal resident population by gender, age group and educational level in the year 2011 and for the time period between the years 2018 and 2022, the period between the years 2012 and 2017 is also treated.
+
+
+It is decided to use the 2011 figure for the years 2012, 2013 and 2014 and the 2018 figure for 2015, 2016 and 2017.
+
+\
+```{r}
+istruzione_2012 <- istruzione_2011
+istruzione_2012$TIME <- 2012
+istruzione_2013 <- istruzione_2011
+istruzione_2013$TIME <- 2013
+istruzione_2014 <- istruzione_2011
+istruzione_2014$TIME <- 2014
+
+istruzione_2015 <- subset(istruzione_2018_2022,TIME==2018)
+istruzione_2015$TIME <- 2015
+istruzione_2016 <- subset(istruzione_2018_2022,TIME==2018)
+istruzione_2016$TIME <- 2016
+istruzione_2017 <- subset(istruzione_2018_2022,TIME==2018)
+istruzione_2017$TIME <- 2017
+```
+\
+
+At this point, having the data for each of the years of the period 2011-2022, I can merge the datasets together to create the final dataset relating to the municipal resident population in the period 2011-2022.
+
+\
+```{r}
+istruzione <- rbind(istruzione_2011,istruzione_2012,istruzione_2013,
+                    istruzione_2014,istruzione_2015,istruzione_2016,
+                    istruzione_2017,istruzione_2018_2022)
+```
+\
+
+Now we proceed to save the `instruction` dataset in `Rdata` and `CSV` format.
+
+\
+```{r}
+save(istruzione, file = "istruzione.Rdata")
+write.csv(istruzione, "istruzione.csv")
+```
+\
+
+# RESIDENT POPULATION 2011-2022
+
+We download datasets on the resident male population for the period between the years 2011 and 2022 (SESSO=1 stads for men, SESSO=2 stands for women).
+
+\
+```{r}
+pop_M_2011 <- read.csv("pop_res_M_2011.csv", sep=",", encoding = "UTF-8")
+pop_M_2011 <- pop_M_2011[,c("ITTER107","Territorio","SEXISTAT1","Sesso","ETA1","TIME","Value")]
+
+pop_M_2012 <- read.csv("pop_res_M_2012.csv", sep=",", encoding = "UTF-8")
+pop_M_2012 <- pop_M_2012[,c("ITTER107","Territorio","SEXISTAT1","Sesso","ETA1","TIME","Value")]
+
+pop_M_2013 <- read.csv("pop_res_M_2013.csv", sep=",", encoding = "UTF-8")
+pop_M_2013 <- pop_M_2013[,c("ITTER107","Territorio","SEXISTAT1","Sesso","ETA1","TIME","Value")]
+
+pop_M_2014 <- read.csv("pop_res_M_2014.csv", sep=",", encoding = "UTF-8")
+pop_M_2014 <- pop_M_2014[,c("ITTER107","Territorio","SEXISTAT1","Sesso","ETA1", "TIME","Value")]
+
+pop_M_2015 <- read.csv("pop_res_M_2015.csv", sep=",", encoding = "UTF-8")
+pop_M_2015 <- pop_M_2015[,c("ITTER107","Territorio","SEXISTAT1","Sesso","ETA1","TIME","Value")]
+
+pop_M_2016 <- read.csv("pop_res_M_2016.csv", sep=",", encoding = "UTF-8")
+pop_M_2016 <- pop_M_2016[,c("ITTER107","Territorio","SEXISTAT1","Sesso","ETA1","TIME","Value")]
+
+pop_M_2017 <- read.csv("pop_res_M_2017.csv", sep=",", encoding = "UTF-8")
+pop_M_2017 <- pop_M_2017[,c("ITTER107","Territorio","SEXISTAT1","Sesso","ETA1","TIME","Value")]
+
+pop_M_2018 <- read.csv("pop_res_M_2018.csv", sep=",", encoding = "UTF-8")
+pop_M_2018 <- pop_M_2018[,c("ITTER107","Territorio","SEXISTAT1","Sesso","ETA1","TIME","Value")]
+
+pop_M_2019 <- read.csv("pop_res_M_2019.csv", sep=",", encoding = "UTF-8")
+pop_M_2019 <- pop_M_2019[,c("ITTER107","Territorio","SEXISTAT1","Sesso","ETA1", "TIME","Value")]
+
+pop_M_2020 <- read.csv("pop_res_M_2020.csv", sep=",", encoding = "UTF-8")
+pop_M_2020 <- pop_M_2020[,c("ITTER107","Territorio","SEXISTAT1","Sesso","ETA1", "TIME","Value")]
+
+pop_M_2021 <- read.csv("pop_res_M_2021.csv", sep=",", encoding = "UTF-8")
+pop_M_2021 <- pop_M_2021[,c("ITTER107","Territorio","SEXISTAT1","Sesso","ETA1", "TIME","Value")]
+
+pop_M_2022 <- read.csv("pop_res_M_2022.csv", sep=",", encoding = "UTF-8")
+pop_M_2022 <- pop_M_2022[,c("ITTER107","Territorio","SEXISTAT1","Sesso","ETA1", "TIME","Value")]
+```
+\
+
+We download datasets on the resident female population for the years 2011 to 2022.
+
+\
+```{r}
+pop_F_2011 <- read.csv("pop_res_F_2011.csv", sep=",", encoding = "UTF-8")
+pop_F_2011 <- pop_F_2011[,c("ITTER107","Territorio","SEXISTAT1","Sesso","ETA1", "TIME","Value")]
+
+pop_F_2012 <- read.csv("pop_res_F_2012.csv", sep=",", encoding = "UTF-8")
+pop_F_2012 <- pop_F_2012[,c("ITTER107","Territorio","SEXISTAT1","Sesso","ETA1", "TIME","Value")]
+
+pop_F_2013 <- read.csv("pop_res_F_2013.csv", sep=",", encoding = "UTF-8")
+pop_F_2013 <- pop_F_2013[,c("ITTER107","Territorio","SEXISTAT1","Sesso","ETA1", "TIME","Value")]
+
+pop_F_2014 <- read.csv("pop_res_F_2014.csv", sep=",", encoding = "UTF-8")
+pop_F_2014 <- pop_F_2014[,c("ITTER107","Territorio","SEXISTAT1","Sesso","ETA1", "TIME","Value")]
+
+pop_F_2015 <- read.csv("pop_res_F_2015.csv", sep=",", encoding = "UTF-8")
+pop_F_2015 <- pop_F_2015[,c("ITTER107","Territorio","SEXISTAT1","Sesso","ETA1", "TIME","Value")]
+
+pop_F_2016 <- read.csv("pop_res_F_2016.csv", sep=",", encoding = "UTF-8")
+pop_F_2016 <- pop_F_2016[,c("ITTER107","Territorio","SEXISTAT1","Sesso","ETA1", "TIME","Value")]
+
+pop_F_2017 <- read.csv("pop_res_F_2017.csv", sep=",", encoding = "UTF-8")
+pop_F_2017 <- pop_F_2017[,c("ITTER107","Territorio","SEXISTAT1","Sesso","ETA1", "TIME","Value")]
+
+pop_F_2018 <- read.csv("pop_res_F_2018.csv", sep=",", encoding = "UTF-8")
+pop_F_2018 <- pop_F_2018[,c("ITTER107","Territorio","SEXISTAT1","Sesso","ETA1", "TIME","Value")]
+
+pop_F_2019 <- read.csv("pop_res_F_2019.csv", sep=",", encoding = "UTF-8")
+pop_F_2019 <- pop_F_2019[,c("ITTER107","Territorio","SEXISTAT1","Sesso","ETA1", "TIME","Value")]
+
+pop_F_2020 <- read.csv("pop_res_F_2020.csv", sep=",", encoding = "UTF-8")
+pop_F_2020 <- pop_F_2020[,c("ITTER107","Territorio","SEXISTAT1","Sesso","ETA1", "TIME","Value")]
+
+pop_F_2021 <- read.csv("pop_res_F_2021.csv", sep=",", encoding = "UTF-8")
+pop_F_2021 <- pop_F_2021[,c("ITTER107","Territorio","SEXISTAT1","Sesso","ETA1", "TIME","Value")]
+
+pop_F_2022 <- read.csv("pop_res_F_2022.csv", sep=",", encoding = "UTF-8")
+pop_F_2022 <- pop_F_2022[,c("ITTER107","Territorio","SEXISTAT1","Sesso","ETA1", "TIME","Value")]
+```
+\
+
+We create a single dataset and consider only the variables of interest.
+
+\
+```{r}
+pop_res_2011_2022 <- rbind(pop_F_2011,pop_F_2012,pop_F_2013,pop_F_2014,pop_F_2015,pop_F_2016,
+                           pop_F_2017,pop_F_2018,pop_F_2019,pop_F_2020,pop_F_2021,pop_F_2022,
+                           pop_M_2011,pop_M_2012,pop_M_2013,pop_M_2014,pop_M_2015,pop_M_2016,
+                           pop_M_2017,pop_M_2018,pop_M_2019,pop_M_2020,pop_M_2021,pop_M_2022)
+pop_res_2011_2022$ITTER107 <- str_pad(pop_res_2011_2022$ITTER107, width = 6, pad = "0")
+```
+\ 
+
+The number of municipal codes in the `pop_res_2011_2022` dataset is:
+
+\
+```{r}
+length(unique(pop_res_2011_2022$ITTER107))
+```
+\
+
+While the number of municipal names in the `pop_res_2011_2022` dataset is:
+
+\
+```{r}
+length(unique(pop_res_2011_2022$Territorio))
+```
+\
+
+As a result, the number of municipalities is higher than expected, i.e. 7901. Consequently, I create the function to perform the merging of some municipalities into the desired municipality.
+
+\
+```{r}
+aggregate_pop_res <- function(dataset,italian_towns,codice_istat_comune,nome_comune){
+  filtered_dataset <- dataset[dataset$`ITTER107` %in% italian_towns, ]
+  aggregated_dataset <- aggregate(`Value` ~ `SEXISTAT1` + `Sesso` + `ETA1` + `TIME`, 
+                                  data = filtered_dataset, sum)
+  
+  # Assuming 'result' is the dataset obtained after the previous steps
+  aggregated_dataset <- aggregated_dataset %>%
+    mutate(`ITTER107` = codice_istat_comune,
+           `Territorio` = nome_comune)
+  
+  new <- dataset[!dataset$`ITTER107` %in% italian_towns,]
+  new <- rbind(new, aggregated_dataset)
+  
+  return(new)
+}
+```
+\
+
+## Admnistrative changes
+
+We now proceed to perform the various changes that have occurred over the years to the Italian municipalities concerned. In order to do this, it is necessary to download the dataset `Demografia_variazioni_codici_denominazioni_dal_09102011.csv` in the section **Dataset on Administrative Variations**.
+
+### Change of name
+
+The municipal names of the municipalities concerned are changed.
+
+\
+```{r}
+for(codice in cd$`Codice Comune (alfanumerico)`){
+  pop_res_2011_2022[pop_res_2011_2022$ITTER107==codice,"Territorio"] <- 
+    cd[cd$`Codice Comune (alfanumerico)`==codice,"Denominazione Comune associato alla variazione"]
+}
+```
+\
+
+As a result of this operation, the number of municipal denominations is equal to:
+
+\
+```{r}
+length(unique(pop_res_2011_2022$Territorio))
+```
+\
+
+While the number of municipal ISTAT codes is:
+
+\
+```{r}
+length(unique(pop_res_2011_2022$ITTER107))
+```
+\
+
+### Change of Membership (Change Municipal ISTAT Code)
+
+At this point, the municipalities of interest are changed, resulting in a change of the corresponding ISTAT Code.
+
+\
+```{r}
+for(codice in ap$`Codice Comune (alfanumerico)`){
+  pop_res_2011_2022[pop_res_2011_2022$ITTER107==codice,"ITTER107"] <- 
+    ap[ap$`Codice Comune (alfanumerico)`==codice,"Codice del Comune associato alla variazione"]
+}
+```
+\
+
+As a result of this operation, the number of municipal denominations is equal to:
+
+\
+```{r}
+length(unique(pop_res_2011_2022$Territorio))
+```
+\
+
+While the number of ISTAT codes is:
+
+\
+```{r}
+length(unique(pop_res_2011_2022$ITTER107))
+```
+\
+
+### Municipality suppression
+
+Finally, municipalities are merged to form new municipalities, using the function `aggregate_pop_res`.
+
+\
+```{r}
+for(codice in unique(es$`Codice del Comune associato alla variazione`)){
+  codici <- c(es[es$`Codice del Comune associato alla variazione`==codice,"Codice Comune (alfanumerico)"],codice)
+  pop_res_2011_2022 <- aggregate_pop_res(pop_res_2011_2022,
+                                italian_towns = codici,
+                                codice_istat_comune = codice,
+                                nome_comune = unique(es[es$`Codice del Comune associato alla variazione` == codice,
+                                                        "Denominazione Comune associato alla variazione"]))
+}
+```
+\
+
+As a result of this operation, the number of municipal denominations is equal to:
+
+\
+```{r}
+length(unique(pop_res_2011_2022$Territorio))
+```
+\
+
+While the number of ISTAT codes is:
+\
+```{r}
+length(unique(pop_res_2011_2022$ITTER107))
+```
+\
+
+The number of Istat Codes corresponds to the current number (7901), while the number of municipal designations is higher than expected.
+
+
+Check the number of denominations corresponding to the ISTAT Codes of the municipalities considered.
+
+\
+```{r}
+num <- 0
+for(codice in unique(pop_res_2011_2022$ITTER107)){
+  if(length(unique(pop_res_2011_2022[pop_res_2011_2022$ITTER107==codice,"Territorio"]))!=1){
+    num <- num+1
+  }
+}
+print(num)
+```
+\
+
+Each ISTAT code, corresponding to the 7901 Italian municipalities, corresponds to a single name, as expected.
+
+## CL_ETA variable creation
+
+Once the dataset about the resident population with the correct number of municipalities has been prepared, the variable `CL_ETA` is created, defining it in the same way as it is defined within the dataset concerning daily mortality.
+
+\
+```{r}
+new_pop_res_2011_2022 <- pop_res_2011_2022 %>%
+  mutate(CL_ETA = case_when(
+    ETA1 %in% c("Y0","Y1", "Y2", "Y3", "Y4") ~ 1,
+    ETA1 %in% c("Y5", "Y6", "Y7", "Y8", "Y9") ~ 2,
+    ETA1 %in% c("Y10", "Y11", "Y12", "Y13", "Y14") ~ 3,
+    ETA1 %in% c("Y15", "Y16", "Y17", "Y18", "Y19") ~ 4,
+    ETA1 %in% c("Y20", "Y21", "Y22", "Y23", "Y24") ~ 5,
+    ETA1 %in% c("Y25", "Y26", "Y27", "Y28", "Y29") ~ 6,
+    ETA1 %in% c("Y30", "Y31", "Y32", "Y33", "Y34") ~ 7,
+    ETA1 %in% c("Y35", "Y36", "Y37", "Y38", "Y39") ~ 8,
+    ETA1 %in% c("Y40", "Y41", "Y42", "Y43", "Y44") ~ 9,
+    ETA1 %in% c("Y45", "Y46", "Y47", "Y48", "Y49") ~ 10,
+    ETA1 %in% c("Y50", "Y51", "Y52", "Y53", "Y54") ~ 11,
+    ETA1 %in% c("Y55", "Y56", "Y57", "Y58", "Y59") ~ 12,
+    ETA1 %in% c("Y60", "Y61", "Y62", "Y63", "Y64") ~ 13,
+    ETA1 %in% c("Y65", "Y66", "Y67", "Y68", "Y69") ~ 14,
+    ETA1 %in% c("Y70", "Y71", "Y72", "Y73", "Y74") ~ 15,
+    ETA1 %in% c("Y75", "Y76", "Y77", "Y78", "Y79") ~ 16,
+    ETA1 %in% c("Y80", "Y81", "Y82", "Y83", "Y84") ~ 17,
+    ETA1 %in% c("Y85", "Y86", "Y87", "Y88", "Y89",
+                "Y90", "Y91", "Y92", "Y93", "Y94",
+                "Y95", "Y96", "Y97", "Y98", "Y99",
+                "Y_GE100") ~ 18,
+    TRUE ~ NA_integer_
+  ))
+
+pop_res <- new_pop_res_2011_2022 %>%
+  group_by(ITTER107, Territorio, SEXISTAT1, Sesso, TIME, CL_ETA) %>%
+  summarise(total = sum(Value),
+            .groups = "drop")
+```
+\
+
+In this way, thanks to the `pop_res` dataset for each municipality, it is possible to estimate at each year in the time period considered the number of subjects present in each combination of sex and age class levels.
+
+
+We now proceed to save the `pop_res` dataset in `Rdata` and `CSV` format.
+
+\
+```{r}
+colnames(pop_res)[colnames(pop_res) == "SEXISTAT1"] <- "SESSO"
+pop_res <- pop_res[,c("ITTER107","Territorio","SESSO","CL_ETA","TIME","total")]
+save(pop_res, file = "pop_res.Rdata")
+write.csv(pop_res,"pop_res.csv")
+```
+\
+
+## Calculation of mid-year population
+
+Selection of observations for the years 2011 and 2012.
+\
+```{r}
+pop_11_12 <- pop_res[pop_res$TIME==2011 | pop_res$TIME==2012,]
+agg_pop_11_12 <- pop_11_12 %>%
+  group_by(ITTER107, Territorio, SESSO, CL_ETA) %>%
+  summarise(pop_media = mean(total),
+            .groups = "drop")
+pop_media_11_12 <- merge(pop_11_12,agg_pop_11_12)
+pop_media_11_12 <- pop_media_11_12[order(pop_media_11_12$ITTER107,pop_media_11_12$Territorio,
+                                         pop_media_11_12$SESSO,pop_media_11_12$CL_ETA),]
+```
+\
+
+Selection of observations for the years 2013 and 2014.
+
+\
+```{r}
+pop_13_14 <- pop_res[pop_res$TIME==2013 | pop_res$TIME==2014,]
+agg_pop_13_14 <- pop_13_14 %>%
+  group_by(ITTER107, Territorio, SESSO, CL_ETA) %>%
+  summarise(pop_media = mean(total),
+            .groups = "drop")
+pop_media_13_14 <- merge(pop_13_14,agg_pop_13_14)
+pop_media_13_14 <- pop_media_13_14[order(pop_media_13_14$ITTER107,pop_media_13_14$Territorio,
+                                         pop_media_13_14$SESSO,pop_media_13_14$CL_ETA),]
+```
+\
+
+Selection of observations for the anni 2015 and 2016.
+
+\
+```{r}
+pop_15_16 <- pop_res[pop_res$TIME==2015 | pop_res$TIME==2016,]
+agg_pop_15_16 <- pop_15_16 %>%
+  group_by(ITTER107, Territorio, SESSO, CL_ETA) %>%
+  summarise(pop_media = mean(total),
+            .groups = "drop")
+pop_media_15_16 <- merge(pop_15_16,agg_pop_15_16)
+pop_media_15_16 <- pop_media_15_16[order(pop_media_15_16$ITTER107,pop_media_15_16$Territorio,
+                                         pop_media_15_16$SESSO,pop_media_15_16$CL_ETA),]
+```
+\
+
+Selection of observations for the 2017 and 2018.
+
+\
+```{r}
+pop_17_18 <- pop_res[pop_res$TIME==2017 | pop_res$TIME==2018,]
+agg_pop_17_18 <- pop_17_18 %>%
+  group_by(ITTER107, Territorio, SESSO, CL_ETA) %>%
+  summarise(pop_media = mean(total),
+            .groups = "drop")
+pop_media_17_18 <- merge(pop_17_18,agg_pop_17_18)
+pop_media_17_18 <- pop_media_17_18[order(pop_media_17_18$ITTER107,pop_media_17_18$Territorio,
+                                         pop_media_17_18$SESSO,pop_media_17_18$CL_ETA),]
+```
+\
+
+Selection of observations for the 2019 and 2020.
+
+\
+```{r}
+pop_19_20 <- pop_res[pop_res$TIME==2019 | pop_res$TIME==2020,]
+agg_pop_19_20 <- pop_19_20 %>%
+  group_by(ITTER107, Territorio, SESSO, CL_ETA) %>%
+  summarise(pop_media = mean(total),
+            .groups = "drop")
+pop_media_19_20 <- merge(pop_19_20,agg_pop_19_20)
+pop_media_19_20 <- pop_media_19_20[order(pop_media_19_20$ITTER107,pop_media_19_20$Territorio,
+                                         pop_media_19_20$SESSO,pop_media_19_20$CL_ETA),]
+```
+\
+
+Selection of observations for the 2021 and 2022. 
+
+\
+```{r}
+pop_21_22 <- pop_res[pop_res$TIME==2021 | pop_res$TIME==2022,]
+agg_pop_21_22 <- pop_21_22 %>%
+  group_by(ITTER107, Territorio, SESSO, CL_ETA) %>%
+  summarise(pop_media = mean(total),
+            .groups = "drop")
+pop_media_21_22 <- merge(pop_21_22,agg_pop_21_22)
+pop_media_21_22 <- pop_media_21_22[order(pop_media_21_22$ITTER107,pop_media_21_22$Territorio,
+                                         pop_media_21_22$SESSO,pop_media_21_22$CL_ETA),]
+```
+\
+
+We merge the `pop_media_11_12`, `pop_media_13_14`, `pop_media_15_16`, `pop_media_17_18`, `pop_media_19_20` and `pop_media_21_22` datasets.
+
+\
+```{r}
+pop_media <- rbind(pop_media_11_12,pop_media_13_14, pop_media_15_16,
+                   pop_media_17_18,pop_media_19_20,pop_media_21_22)
+pop_media <- pop_media[order(pop_media$ITTER107,pop_media$Territorio,pop_media$SESSO,
+                             pop_media$CL_ETA,pop_media$TIME),]
+pop_media$pop_media <- round(pop_media$pop_media)
+pop_media <- pop_media[,c("ITTER107","Territorio","SESSO","CL_ETA","TIME","pop_media")]
+save(pop_media,file="pop_media.Rdata")
+write.csv(pop_media,"pop_media.csv")
+```
+\
