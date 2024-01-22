@@ -1,0 +1,339 @@
+---
+title: "Indexes of inequalities - R"
+author: "Matteo Vergani"
+date: "`r Sys.Date()`"
+output: pdf_document
+---
+
+Si crea la directory, puntando all'indirizzo dove sono salvati i file contenenti i dataset.
+
+\
+```{r}
+directory <- "C:\\Users\\hp\\Documents\\UNIMIB\\Tesi\\"
+setwd(directory)
+```
+\
+
+# Estimation of RII
+
+Data generated from Cox model with Weibull baseline hazard, including age and the socioeconomic rank $x$ as predictors, with $RII=3$. Uniform censoring (27\%) was superimposed.
+
+\
+```{r}
+dat<-read.table("dataRII.txt",dec=".",sep=";",header=T)
+```
+\
+
+Variables in database:
+
+* ID: a unique identification number for each individual
+
+* time: time to event or censoring
+
+* status: 1=experienced event, 0=censored
+
+* socgroup: socioeconomic group, categories 1 to 4, with 1=highest level
+
+* x: socioeconomic rank (usually unobserved)
+
+* midpoint: group-specific socioeconomic rank, used to approximate x in regression (x_k)
+
+* ageEntry: age of entry in the study (in years)
+
+\
+```{r}
+head(dat)
+```
+\
+
+## Cox model - individual time-to-event data
+
+Estimate RII from Cox model using age as time-scale : Use `coxph` function from survival package to fit model. To obtain robust SEs add the term `+cluster(ID)`.
+
+\
+```{r}
+library(survival)
+dat$ageExit<-dat$ageEntry+dat$time
+fit<-summary(coxph(Surv(time=ageEntry,time2=ageExit,event=status)~midpoint+cluster(ID),
+                   data=dat))
+logRII<-fit$coefficients[1]
+selogrii<-fit$coefficients[4]
+```
+\
+
+\
+```{r}
+library(msm) #for generic delta-method function
+serii<-deltamethod(~exp(x1),logRII,selogrii^2)
+ResultsHaz<-c(RII=exp(logRII),SE=serii,lower95=fit$conf.int[3],upper95=fit$conf.int[4])
+```
+\
+
+## Multiplicative Poisson model - aggrageted data
+
+Estimate RII from multiplicative Poisson model**:
+
+* Person-year calculations by **age-group** and **socioeconomic group** with `pyears` function from `survival` package;
+
+* Use `tcut` function to account for the fact that an individual changes age-group during follow-up;
+
+\
+```{r}
+dat$ageGroup2<-tcut(x = dat$ageEntry, c(30,35,40,45,50,55,60,65,70,75,80,85), 
+                    labels = c("30+ - 35","35+ - 40","40+ - 45","45+ - 50",
+                               "50+ - 55","55+ - 60", "60+ - 65","65+ - 70",
+                               "70+-75","75+-80","80+-85"))
+py<-pyears(Surv(time=time,event=status)~socgroup+ageGroup2, data=dat,data.frame=T,scale=1)
+datAGG<-py$data[1:28,]
+datAGG$midpoint<-NULL
+dismid<-unique(dat$midpoint)
+dismid<-dismid[order(dismid)]
+for(g in 1:4){
+  datAGG$midpoint[datAGG$socgroup==g]<-dismid[g]
+}
+```
+\
+
+Use `glm` function with option `family=quasipoisson(link=”log“)` to estimate **overdispersion**:
+
+* if dispersion parameter (`disp`) <1 then use `family=poisson(link=”log“)`;
+
+* instead to fix dispersion parameter at 1;
+
+Model formula should include `log(pyears)` as *offset*;
+
+\
+```{r}
+fit<-glm(event~offset(log(pyears))+midpoint+ageGroup2,data=datAGG,
+         family=quasipoisson(link="log"))
+df.r <- fit$df.residual
+
+disp<-sum((fit$weights * fit$residuals^2)[fit$weights > 0])/df.r
+if(disp<1){
+  fit<-glm(event~offset(log(pyears))+midpoint+ageGroup2,data=datAGG,
+                    family=poisson(link="log"))
+}
+
+logRII<-summary(fit)$coefficients["midpoint",1]
+selogrii<-summary(fit)$coefficients["midpoint",2]
+serii<-deltamethod(~exp(x1),logRII,selogrii^2)
+ResultsIncid<-c(RII=exp(logRII),SE=serii,
+                lower95=exp(logRII-1.96*selogrii),
+                upper95=exp(logRII+1.96*selogrii))
+
+# Hazard-based estimates more precise, as expected
+rbind(ResultsHaz,ResultsIncid)
+```
+\
+
+# Estimation of SII
+
+Data generated from an additive hazards model with Weibull baseline hazard, including age and the socioeconomic rank $x$ as predictors, with $SII=0.05$.
+
+Uniform censoring (18\%) was superimposed.
+
+\
+```{r}
+dat<-read.table("dataSII.txt",dec=".",sep=";",header=T)
+```
+\
+
+Same Variables in the previous database:
+
+\
+```{r}
+head(dat)
+```
+\
+
+## Additive hazards model - individual time-to-event data
+
+**Estimate SII from additive hazards model using age as time-scale**
+
+* Use `aalen` function from `timereg` package to fit model;
+* the option `robust=1` yields robust SEs;
+
+\
+```{r}
+library(timereg)
+
+fit<-aalen(Surv(time=ageEntry,time2=ageExit,event=status)~const(midpoint),
+           data=dat,robust=1,n.sim=0,start.time=30)
+siires<-fit$gamma
+sesii<-sqrt(fit$robvar.gamma)
+ResultsHaz<-c(SII=siires,SE=sesii,lower95=siires-1.96*sesii,upper95=siires+1.96*sesii)
+```
+\
+
+## Additive Poisson model - aggregated data
+
+Now Estimate SII from **additive Poisson model**:
+
+* Person-year calculations by age-group and socioeconomic group with `pyears` function from `survival` package;
+
+* Use `tcut` function to account for the fact that an individual changes age-group during follow-up;
+
+\
+```{r}
+library(survival)
+dat$ageGroup2<-tcut(dat$ageEntry, c(30,35,40,45,50,55,60,65,70,75,80,85), labels = 
+              c("30+ - 35","35+ - 40","40+ - 45","45+ - 50","50+ - 55","55+ - 60",
+                "60+ - 65","65+ - 70","70+-75","75+-80","80+-85"))
+py<-pyears(Surv(time=time,event=status)~socgroup+ageGroup2, data=dat,data.frame=T,scale=1)
+datAGG<-py$data[1:28,]
+datAGG$midpoint<-NULL
+dismid<-unique(dat$midpoint)
+dismid<-dismid[order(dismid)]
+for(g in 1:4){
+  datAGG$midpoint[datAGG$socgroup==g]<-dismid[g]
+}
+```
+\
+
+Use `glm` function with option:
+
+* `family=quasipoisson(link=”identity“)` to estimate overdispersion;
+
+* if dispersion parameter (`disp`) <1 then use `family=poisson(link=”identity“)` instead fix dispersion parameter at 1;
+
+* Model formula should exclude intercept (-1), include `pyears` as predictor and premultiply all other predictors by `pyears`;
+
+\
+```{r}
+fit<-glm(event~pyears+pyears:ageGroup2+I(pyears*midpoint)-1,
+         data=datAGG, 
+         family=quasipoisson(link="identity"))
+
+df.r <- fit$df.residual
+disp<-sum((fit$weights * fit$residuals^2)[fit$weights > 0])/df.r
+
+if(disp<1){
+  fit<-glm(event~pyears+pyears:ageGroup2+I(pyears*midpoint)-1,
+           data=datAGG,
+           family=poisson(link="identity"))
+}
+
+siires<-summary(fit)$coefficients["I(pyears * midpoint)",1]
+sesii<-summary(fit)$coefficients["I(pyears * midpoint)",2]
+
+ResultsIncid<-c(SII=siires,SE=sesii,lower95=siires-1.96*sesii,upper95=siires+1.96*sesii)
+```
+\
+
+Hazard-based estimates more precise, as expected
+
+\
+```{r}
+rbind(ResultsHaz,ResultsIncid)
+```
+\
+
+# Estimate age-standardized SII from additive hazards model
+
+Reference population weights (European IARC 1976 population)
+
+\
+```{r}
+ageRef<-c(0.152173913,0.152173913,0.152173913,0.152173913,0.152173913,0.130434783,0.108695652)
+```
+\
+
+Fit a different model within each age-group using age as time-scale to get age-specific SIIs, then combine using weights from reference population into final For age-standardized estimate boot function can be used obtain final estimate, robust SE and robust CIs.
+
+\
+```{r}
+library(timereg)
+library(boot)
+```
+\
+
+\
+```{r}
+dat$ageExit<-dat$ageEntry+dat$time
+starts<-c(30,35,40,45,50,55,60)
+dat$ageGroup<-cut(dat$ageEntry, c(30,35,40,45,50,55,60,65), labels = 
+                    c("30+ - 35","35+ - 40","40+ - 45","45+ - 50",
+                      "50+ - 55","55+ - 60","60+ - 65"))
+```
+\
+
+\
+```{r}
+stat<-function(datc,ind){ 
+  datb<-datc[ind,]
+  siiboot<-vector()
+  for(i in 1:length(levels(dat$ageGroup))){
+    fit<-aalen(Surv(time=ageEntry,time2=ageExit,event=status)~const(midpoint),
+               data=datb[datb$ageGroup==levels(datb$ageGroup)[i],],
+               robust=0,n.sim=0,start.time=starts[i])
+    siiboot<-c(siiboot,fit$gamma)
+    }
+  return(sum(ageRef*siiboot))
+  }
+```
+\
+
+\
+```{r}
+bstrap<-boot(data=dat, statistic=stat, stype="i", R=100) #R= number of bootstrap repetitions
+                                                         # ideally one should do 1000 bootstraps
+btci<-boot.ci(bstrap,type=c("perc"))$percent[4:5]        #yields CIs based on percentiles 
+sesii<-apply(bstrap$t,2,sd,na.rm=T)
+ResultsHazAge<-c(SII=bstrap$t0,SE=sesii,lower95=btci[1],upper95=btci[2])
+```
+\
+
+# Age-standardized SII from additive Poisson model
+
+* Person-year calculations by age-group and socioeconomic group with `pyears` function from `survival` package;
+
+* Use `tcut` function to account for the fact that an individual changes age-group during follow-up;
+
+\
+```{r}
+library(survival)
+dat$ageGroup2<-tcut(dat$ageEntry, c(30,35,40,45,50,55,60,65,70,75,80,85), labels = 
+                      c("30+ - 35","35+ - 40","40+ - 45","45+ - 50","50+ - 55","55+ - 60",
+                        "60+ - 65","65+ - 70","70+-75","75+-80","80+-85"))
+py<-pyears(Surv(time=time,event=status)~socgroup+ageGroup2, data=dat,data.frame=T,scale=1)
+datAGG<-py$data[1:28,]
+datAGG$midpoint<-NULL
+dismid<-unique(dat$midpoint)
+dismid<-dismid[order(dismid)]
+for(g in 1:4){
+  datAGG$midpoint[datAGG$socgroup==g]<-dismid[g]
+}
+```
+\
+
+\
+```{r}
+# Include interaction between age-group and socioeconomic rank (premultiplied by pyears)
+# to obtain age-specific SIIs, then combine using weights from reference population into final age-standardized estimate.
+# Use delta-method to obtain SEs
+fit<-glm2(event~pyears+pyears:ageGroup2+I(pyears*midpoint):ageGroup2-1,data=datAGG, 
+         family=quasipoisson(link="identity"))
+df.r <- fit$df.residual
+disp<-sum((fit$weights * fit$residuals^2)[fit$weights > 0])/df.r
+if(disp<1){
+  fit<-glm(event~pyears+pyears:ageGroup2+I(pyears*midpoint):ageGroup2-1,data=datAGG, 
+                    family=poisson(link="identity"))
+}
+cvm<-vcov(fit)[8:14,8:14]
+siibyage<-summary(fit)$coefficients[8:14,1]
+library(msm)
+sesii<-deltamethod(~0.152173913*x1+0.152173913*x2+0.152173913*x3+0.152173913*x4+
+                     0.152173913*x5+0.130434783*x6+0.108695652*x7,siibyage,cvm)  
+ResultsIncidAge<-c(SII=sum(ageRef*siibyage),SE=sesii,
+                   lower95=sum(ageRef*siibyage)-1.96*sesii,
+                   upper95=sum(ageRef*siibyage)+1.96*sesii) 
+```
+\
+
+Hazard-based estimates more precise, as expected
+
+\
+```{r}
+rbind(ResultsHazAge,ResultsIncidAge)
+```
+\
