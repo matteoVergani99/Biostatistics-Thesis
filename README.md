@@ -1,5 +1,7 @@
 # Territorial Socioeconomic Indicators and Mortality in Italian Municipalities: A Panel Data Analysis for Monitoring Territorial Inequalities
 
+*By Matteo Vergani*$^1$*, Dott. Gianfranco Alicandro*$^2$ *and Prof. Rino Bellocco*$^3$
+
 ## Background
 
 Reducing territorial disparities in health is a crucial yet unresolved public health concern in several countries.  Italy has important territorial variations in mortality rates, which could be partly explained by the different distribution of socio-economic indicators in the country. This study aims to assess the relationship between territorial socio-economic indicators and total mortality in Italian municipalities.
@@ -17,3 +19,7 @@ In 2011, the RII related to educational inequality was 1.13 (95% CI [1.11;1.13])
 
 Area-level socio-economic indicators are important determinants of spatial differences in mortality in Italian municipalities. This study indicates that despite a noticeable reduction in absolute socioeconomic disparities in mortality, in relative terms, mortality rates remain higher in areas where individuals have lower income and education levels.
 
+Contacts:
+1) email: matteo.ge99@gmai.com;
+2) email: gianfranco.alicandro@unimi.it;
+3) emial: rino.bellocco@unimib.it.
