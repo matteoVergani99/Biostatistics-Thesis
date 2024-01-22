@@ -20,6 +20,6 @@ In 2011, the RII related to educational inequality was 1.13 (95% CI [1.11;1.13])
 Area-level socio-economic indicators are important determinants of spatial differences in mortality in Italian municipalities. This study indicates that despite a noticeable reduction in absolute socioeconomic disparities in mortality, in relative terms, mortality rates remain higher in areas where individuals have lower income and education levels.
 
 Contacts:
-1) email: matteo.ge99@gmai.com;
-2) email: gianfranco.alicandro@unimi.it;
-3) emial: rino.bellocco@unimib.it.
+1) email: matteo.ge99@gmail.com;
+2) Università degli Studi di Milano, email: gianfranco.alicandro@unimi.it;
+3) Università degli Studi di Milano-Bicocca, email: rino.bellocco@unimib.it.
