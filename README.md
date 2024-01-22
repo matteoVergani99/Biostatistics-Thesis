@@ -1,6 +1,4 @@
-# Biostatistics-Thesis
-
-**TITLE**: Territorial Socioeconomic Indicators and Mortality in Italian Municipalities: A Panel Data Analysis for Monitoring Territorial Inequalities
+**Territorial Socioeconomic Indicators and Mortality in Italian Municipalities: A Panel Data Analysis for Monitoring Territorial Inequalities**
 
 # Background
 
